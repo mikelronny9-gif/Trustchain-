@@ -519,6 +519,7 @@ canvas{display:block;max-width:100%}
 <div id="page-login" class="page">
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:80px 16px 32px;background:radial-gradient(ellipse at 30% 50%,rgba(245,158,11,.06),transparent 60%)">
     <div style="width:100%;max-width:420px">
+      <button class="btn btn-ghost btn-sm mb-3" onclick="navigate('landing')" style="display:flex;align-items:center;gap:6px">← Back to Home</button>
       <div style="text-align:center;margin-bottom:28px">
         <div class="nav-logo" style="font-size:24px;margin-bottom:8px;display:inline-block">TrustChain<span style="color:var(--text)"> Capital</span></div>
         <h1 style="font-size:24px;font-weight:700;margin-bottom:6px">Welcome back</h1>
@@ -536,6 +537,7 @@ canvas{display:block;max-width:100%}
         <button class="btn btn-gold btn-block btn-lg mt-2" onclick="doLogin()" id="login-btn">Sign In</button>
         <div class="sep"></div>
         <p class="text-center text-sm text-muted">Don't have an account? <a class="text-gold" onclick="navigate('register')" style="cursor:pointer">Sign up free</a></p>
+        <button class="btn btn-outline btn-block mt-2" onclick="openImportSync()" style="border-color:var(--blue);color:var(--blue)">📱 Import Account with Sync Code</button>
         <div style="margin-top:16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px;font-size:12px;color:var(--muted)">
           <div class="text-gold font-bold mb-1">Demo Credentials</div>
           <div>User: demo@trustchain.com / Demo@123</div>
@@ -550,6 +552,7 @@ canvas{display:block;max-width:100%}
 <div id="page-register" class="page">
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:80px 16px 32px;background:radial-gradient(ellipse at 70% 50%,rgba(59,130,246,.06),transparent 60%)">
     <div style="width:100%;max-width:480px">
+      <button class="btn btn-ghost btn-sm mb-3" onclick="navigate('landing')" style="display:flex;align-items:center;gap:6px">← Back to Home</button>
       <div style="text-align:center;margin-bottom:28px">
         <div class="nav-logo" style="font-size:24px;margin-bottom:8px;display:inline-block">TrustChain<span style="color:var(--text)"> Capital</span></div>
         <h1 style="font-size:24px;font-weight:700;margin-bottom:6px">Create your account</h1>
@@ -960,6 +963,11 @@ canvas{display:block;max-width:100%}
             <div class="form-group"><label class="form-label">New PIN (4–6 digits)</label><input type="password" id="set-pin" class="form-control" placeholder="Enter new PIN" maxlength="6"></div>
             <button class="btn btn-outline btn-block" onclick="changePin()">Update PIN</button>
           </div>
+          <div class="card" style="background:rgba(59,130,246,.06);border-color:rgba(59,130,246,.3)">
+            <h3 class="font-semi mb-1" style="color:var(--blue)">📱 Account Sync</h3>
+            <p class="text-muted text-sm mb-3">Log in to your account from any phone or browser — no email needed.</p>
+            <button class="btn btn-block" style="background:var(--blue);color:#fff" onclick="exportSyncCode()">Get Sync Code</button>
+          </div>
         </div>
         <div>
           <div class="card mb-2">
@@ -1362,12 +1370,16 @@ function confirmLogout(){
 }
 function doLogout(){
   if(profitInterval)clearInterval(profitInterval);
-  currentUser=null;clearSession();
+  currentUser=null;
+  clearSession();
   updateNavUI();
-  showToast('Signed out successfully','info');
-  navigate('landing');
-  document.getElementById('page-app').classList.remove('active');
+  closeLangDropdown();
+  // Show all pages inactive, then activate landing
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-landing').classList.add('active');
+  savePageState('landing','');
+  window.scrollTo(0,0);
+  showToast('Signed out successfully','info');
 }
 
 function openPasswordReset(){
@@ -2574,6 +2586,89 @@ function filterLangs(val){renderLangOptions(val);}
 function renderSettingsLang(){
   const grid=document.getElementById('settings-lang-grid');if(!grid)return;
   grid.innerHTML=Object.keys(LANG_NAMES).map(l=>`<div onclick="setLanguage('${l}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;background:${l===currentLang?'rgba(245,158,11,.15)':'var(--bg3)'};border:1px solid ${l===currentLang?'var(--gold)':'var(--border)'};transition:all .2s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="if('${l}'!==currentLang)this.style.borderColor='var(--border)'"><span style="font-size:16px">${LANG_FLAGS[l]||'🌐'}</span><span style="color:${l===currentLang?'var(--gold)':'var(--text)'}">${LANG_NAMES[l]}</span>${l===currentLang?'<span style="margin-left:auto;font-size:11px;color:var(--gold)">✓</span>':''}</div>`).join('');
+}
+
+// ================================================================
+//  ACCOUNT SYNC (cross-device login)
+// ================================================================
+function exportSyncCode(){
+  if(!currentUser)return;
+  const data=getData();
+  const payload={
+    v:1,
+    user:currentUser,
+    transactions:data.transactions.filter(t=>t.userId===currentUser.id),
+    investments:data.investments.filter(i=>i.userId===currentUser.id),
+    notifications:data.notifications.filter(n=>!n.targetUserId||n.targetUserId===currentUser.id)
+  };
+  try{
+    window._syncCode=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  }catch(e){
+    window._syncCode=btoa(JSON.stringify(payload));
+  }
+  openModal('📱 Account Sync Code',`
+    <p class="text-muted text-sm mb-3">Copy this code and paste it on any phone or browser to instantly access your account — no email or password needed on the new device.</p>
+    <div id="sync-code-display" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;word-break:break-all;font-family:monospace;font-size:10px;max-height:130px;overflow-y:auto;cursor:text;line-height:1.6">${window._syncCode}</div>
+    <button class="btn btn-block mt-2" style="background:var(--blue);color:#fff" onclick="copyText(window._syncCode,'✅ Sync code copied!')">📋 Copy Sync Code</button>
+    <div style="margin-top:12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px;font-size:12px;color:var(--muted)">
+      ⚠️ <strong>Keep this code private.</strong> Anyone with it can access your full account. Regenerate it after sharing.
+    </div>
+  `);
+}
+
+function openImportSync(){
+  openModal('📱 Import Account',`
+    <p class="text-muted text-sm mb-3">Paste the sync code from your other device to restore your account on this phone or browser.</p>
+    <div class="form-group">
+      <label class="form-label">Sync Code</label>
+      <textarea class="form-control" id="sync-code-input" rows="5" placeholder="Paste your sync code here..." style="font-family:monospace;font-size:11px;resize:vertical"></textarea>
+    </div>
+    <button class="btn btn-gold btn-block" onclick="importSyncCode()">Import Account</button>
+  `);
+}
+
+function importSyncCode(){
+  const raw=(document.getElementById('sync-code-input')?.value||'').trim();
+  if(!raw){showToast('Please paste your sync code','error');return;}
+  let payload;
+  try{
+    payload=JSON.parse(decodeURIComponent(escape(atob(raw))));
+  }catch(e1){
+    try{payload=JSON.parse(atob(raw));}
+    catch(e2){showToast('Invalid or corrupted sync code','error');return;}
+  }
+  if(!payload||!payload.user||!payload.user.id||!payload.user.email){
+    showToast('Invalid sync code — missing account data','error');return;
+  }
+  const u=payload.user;
+  // Block importing admin accounts for security
+  if(u.role==='admin'){showToast('Admin accounts cannot be imported via sync code','error');return;}
+
+  const data=getData();
+  // Upsert user
+  const idx=data.users.findIndex(x=>x.id===u.id);
+  if(idx>=0){data.users[idx]=u;}else{data.users.push(u);}
+  // Merge transactions (no duplicates)
+  (payload.transactions||[]).forEach(t=>{
+    if(!data.transactions.find(x=>x.id===t.id))data.transactions.push(t);
+  });
+  // Merge investments
+  (payload.investments||[]).forEach(i=>{
+    if(!data.investments.find(x=>x.id===i.id))data.investments.push(i);
+  });
+  // Merge notifications
+  (payload.notifications||[]).forEach(n=>{
+    if(!data.notifications.find(x=>x.id===n.id))data.notifications.push(n);
+  });
+
+  saveData(data);
+  currentUser=u;
+  setSession(u);
+  closeModal();
+  updateNavUI();
+  initLang();
+  showToast('Welcome back, '+u.name.split(' ')[0]+'! Account imported ✓','success');
+  navigate('dashboard');
 }
 </script>
 
