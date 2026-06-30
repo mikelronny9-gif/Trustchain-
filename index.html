@@ -287,6 +287,15 @@ canvas{display:block;max-width:100%}
 .legend-dot{width:10px;height:10px;border-radius:50%}
 .sidebar-toggle{display:none;width:36px;height:36px;background:var(--card);border-radius:8px;align-items:center;justify-content:center;cursor:pointer;margin-right:8px}
 .lang-flag{font-size:18px}
+.lang-picker-btn{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 11px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;transition:var(--trans);white-space:nowrap}
+.lang-picker-btn:hover{border-color:var(--gold);color:var(--gold)}
+.lang-dropdown{position:fixed;z-index:5000;background:var(--card2);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.7);padding:8px;min-width:230px;max-height:370px;overflow-y:auto}
+.lang-option{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:14px;transition:var(--trans)}
+.lang-option:hover{background:var(--card);color:var(--gold)}
+.lang-option.active-lang{background:rgba(245,158,11,.12);color:var(--gold)}
+.lang-search-box{width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;margin-bottom:8px;display:block}
+.lang-search-box::placeholder{color:var(--muted)}
+.lang-search-box:focus{border-color:var(--gold);outline:none}
 .footer{background:var(--bg2);border-top:1px solid var(--border);padding:40px 24px;text-align:center;color:var(--muted);font-size:13px}
 .footer-links{display:flex;gap:20px;justify-content:center;margin-bottom:16px;flex-wrap:wrap}
 .footer-links a{transition:var(--trans);cursor:pointer}
@@ -360,11 +369,22 @@ canvas{display:block;max-width:100%}
         Logout
       </button>
     </div>
+    <button class="lang-picker-btn" id="lang-picker-btn" onclick="toggleLangDropdown(event)" title="Change language">
+      <span id="lang-flag-display">🌐</span>
+      <span id="lang-name-display">EN</span>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
     <div class="nav-hamburger" onclick="toggleMobileMenu()">
       <span></span><span></span><span></span>
     </div>
   </div>
 </nav>
+
+<!-- LANGUAGE DROPDOWN PORTAL -->
+<div id="lang-dropdown" class="lang-dropdown" style="display:none">
+  <input class="lang-search-box" id="lang-search-input" placeholder="🔍 Search language..." oninput="filterLangs(this.value)">
+  <div id="lang-options-list"></div>
+</div>
 
 <!-- MOBILE MENU -->
 <div class="mobile-menu" id="mobile-menu">
@@ -953,6 +973,11 @@ canvas{display:block;max-width:100%}
             <h3 class="font-semi mb-2">Display Settings</h3>
             <div class="form-group"><label class="form-label">Currency Display</label><select class="form-control"><option>USD ($)</option><option>EUR (€)</option><option>GBP (£)</option></select></div>
             <div class="form-group mb-0"><label class="form-label">Timezone</label><select class="form-control"><option>UTC+0</option><option>UTC-5 (EST)</option><option>UTC+1 (WAT)</option><option>UTC+3 (EAT)</option><option>UTC+8 (SGT)</option></select></div>
+          </div>
+          <div class="card mb-2" id="settings-lang-card">
+            <h3 class="font-semi mb-1" id="settings-lang-title">🌐 Language</h3>
+            <p class="text-muted text-sm mb-2" id="settings-lang-sub">Choose your preferred display language</p>
+            <div id="settings-lang-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:280px;overflow-y:auto"></div>
           </div>
           <div class="card" style="background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.3)">
             <h3 class="font-semi mb-1" style="color:var(--red)">Danger Zone</h3>
@@ -2316,6 +2341,7 @@ function init(){
   populateCountries();
   buildLiveProof();
   renderFaqs('faq-public');
+  initLang();
 
   // Restore session
   const session=getSession();
@@ -2323,7 +2349,7 @@ function init(){
     const data=getData();
     const u=data.users.find(x=>x.id===session.id);
     if(u&&u.status!=='suspended'){
-      currentUser=u;updateNavUI();
+      currentUser=u;updateNavUI();initLang();
       const {page,section}=getPageState();
       if(page==='app'&&section){
         document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -2353,6 +2379,202 @@ function init(){
 
 window.addEventListener('DOMContentLoaded',init);
 window.addEventListener('beforeunload',()=>{if(profitInterval)clearInterval(profitInterval);});
+
+// ================================================================
+//  LANGUAGE SYSTEM
+// ================================================================
+const LANG_FLAGS={en:'🇺🇸',es:'🇪🇸',fr:'🇫🇷',de:'🇩🇪',ar:'🇸🇦',zh:'🇨🇳',pt:'🇧🇷',hi:'🇮🇳',bn:'🇧🇩',ru:'🇷🇺',ja:'🇯🇵',ko:'🇰🇷',it:'🇮🇹',nl:'🇳🇱',tr:'🇹🇷',pl:'🇵🇱',vi:'🇻🇳',th:'🇹🇭',id:'🇮🇩',ms:'🇲🇾',fa:'🇮🇷',sw:'🇰🇪',ur:'🇵🇰',fil:'🇵🇭',am:'🇪🇹',he:'🇮🇱',el:'🇬🇷',sq:'🇦🇱',hr:'🇭🇷',cs:'🇨🇿',da:'🇩🇰',fi:'🇫🇮',hu:'🇭🇺',no:'🇳🇴',ro:'🇷🇴',sv:'🇸🇪',uk:'🇺🇦'};
+
+const T={
+  en:{features:'Features',plans:'Plans',about:'About',login:'Login',signup:'Sign Up',logout:'Logout',dashboard:'Dashboard',portfolio:'Portfolio',trading:'Trading Charts',deposit:'Deposit',withdraw:'Withdraw',transactions:'Transactions',notifications:'Notifications',referral:'Referral',spin:'Spin & Win',profile:'Profile & KYC',settings:'Settings',support:'Support',signout:'Sign Out',main:'Main',funds:'Funds',account:'Account',admin_panel:'Admin Panel',hero_title:'Institutional Grade <span class="accent">Crypto Wealth</span> Management',hero_sub:'TrustChain Capital provides secure, transparent, and high-yield investment vehicles for digital assets. Join thousands of investors earning consistent daily returns.',start_investing:'Start Investing →',client_portal:'Client Portal',ready:'Ready to grow your wealth?',join_cta:'Join 47,000+ investors already earning with TrustChain Capital',create_account:'Create Free Account →',settings_title:'Settings',settings_sub:'Manage your account preferences and security',change_password:'Change Password',security_pin:'Security PIN',update_password:'Update Password',update_pin:'Update PIN',danger_zone:'Danger Zone',language:'Language',language_sub:'Choose your preferred display language'},
+  es:{features:'Características',plans:'Planes',about:'Nosotros',login:'Iniciar sesión',signup:'Registrarse',logout:'Salir',dashboard:'Panel',portfolio:'Portafolio',trading:'Gráficos',deposit:'Depositar',withdraw:'Retirar',transactions:'Transacciones',notifications:'Notificaciones',referral:'Referidos',spin:'Girar y Ganar',profile:'Perfil y KYC',settings:'Configuración',support:'Soporte',signout:'Cerrar sesión',main:'Principal',funds:'Fondos',account:'Cuenta',admin_panel:'Panel Admin',hero_title:'Gestión <span class="accent">Cripto</span> Institucional de Patrimonio',hero_sub:'TrustChain Capital ofrece vehículos de inversión seguros, transparentes y de alto rendimiento. Únase a miles de inversores que ganan retornos diarios.',start_investing:'Comenzar a Invertir →',client_portal:'Portal del Cliente',ready:'¿Listo para hacer crecer tu riqueza?',join_cta:'Únete a 47,000+ inversores que ya ganan con TrustChain Capital',create_account:'Crear Cuenta Gratis →',settings_title:'Configuración',settings_sub:'Gestiona tus preferencias de cuenta y seguridad',change_password:'Cambiar Contraseña',security_pin:'PIN de Seguridad',update_password:'Actualizar Contraseña',update_pin:'Actualizar PIN',danger_zone:'Zona de Peligro',language:'Idioma',language_sub:'Elige tu idioma preferido'},
+  fr:{features:'Fonctionnalités',plans:'Plans',about:'À propos',login:'Connexion',signup:'S\'inscrire',logout:'Déconnexion',dashboard:'Tableau de bord',portfolio:'Portefeuille',trading:'Graphiques',deposit:'Dépôt',withdraw:'Retrait',transactions:'Transactions',notifications:'Notifications',referral:'Parrainage',spin:'Tourner & Gagner',profile:'Profil & KYC',settings:'Paramètres',support:'Support',signout:'Déconnexion',main:'Principal',funds:'Fonds',account:'Compte',admin_panel:'Panneau Admin',hero_title:'Gestion <span class="accent">Crypto</span> Patrimoniale Institutionnelle',hero_sub:'TrustChain Capital propose des véhicules d\'investissement sécurisés, transparents et à haut rendement. Rejoignez des milliers d\'investisseurs.',start_investing:'Commencer à Investir →',client_portal:'Portail Client',ready:'Prêt à faire fructifier votre patrimoine ?',join_cta:'Rejoignez 47 000+ investisseurs qui gagnent déjà avec TrustChain Capital',create_account:'Créer un Compte Gratuit →',settings_title:'Paramètres',settings_sub:'Gérez vos préférences de compte et sécurité',change_password:'Changer le mot de passe',security_pin:'Code PIN de sécurité',update_password:'Mettre à jour le mot de passe',update_pin:'Mettre à jour le PIN',danger_zone:'Zone Dangereuse',language:'Langue',language_sub:'Choisissez votre langue préférée'},
+  de:{features:'Funktionen',plans:'Pläne',about:'Über uns',login:'Anmelden',signup:'Registrieren',logout:'Abmelden',dashboard:'Dashboard',portfolio:'Portfolio',trading:'Charts',deposit:'Einzahlung',withdraw:'Auszahlung',transactions:'Transaktionen',notifications:'Benachrichtigungen',referral:'Empfehlung',spin:'Drehen & Gewinnen',profile:'Profil & KYC',settings:'Einstellungen',support:'Support',signout:'Abmelden',main:'Hauptmenü',funds:'Finanzen',account:'Konto',admin_panel:'Admin-Panel',hero_title:'Institutionelles <span class="accent">Krypto-Vermögens</span>management',hero_sub:'TrustChain Capital bietet sichere, transparente und hochrentable Anlagevehikel für digitale Assets. Schließen Sie sich Tausenden von Investoren an.',start_investing:'Investieren starten →',client_portal:'Kundenportal',ready:'Bereit, Ihren Wohlstand zu mehren?',join_cta:'Schließen Sie sich 47.000+ Investoren an, die mit TrustChain verdienen',create_account:'Kostenloses Konto erstellen →',settings_title:'Einstellungen',settings_sub:'Kontoeinstellungen und Sicherheit verwalten',change_password:'Passwort ändern',security_pin:'Sicherheits-PIN',update_password:'Passwort aktualisieren',update_pin:'PIN aktualisieren',danger_zone:'Gefahrenzone',language:'Sprache',language_sub:'Wählen Sie Ihre bevorzugte Sprache'},
+  ar:{features:'الميزات',plans:'الخطط',about:'عن الشركة',login:'تسجيل الدخول',signup:'إنشاء حساب',logout:'خروج',dashboard:'لوحة التحكم',portfolio:'المحفظة',trading:'الرسوم البيانية',deposit:'الإيداع',withdraw:'السحب',transactions:'المعاملات',notifications:'الإشعارات',referral:'الإحالة',spin:'الدوران والفوز',profile:'الملف الشخصي وKYC',settings:'الإعدادات',support:'الدعم',signout:'تسجيل الخروج',main:'الرئيسية',funds:'الأموال',account:'الحساب',admin_panel:'لوحة الإدارة',hero_title:'إدارة <span class="accent">الثروة الرقمية</span> المؤسسية',hero_sub:'توفر TrustChain Capital أدوات استثمار آمنة وشفافة وعالية العائد. انضم إلى آلاف المستثمرين.',start_investing:'ابدأ الاستثمار →',client_portal:'بوابة العملاء',ready:'هل أنت مستعد لتنمية ثروتك؟',join_cta:'انضم إلى أكثر من 47,000 مستثمر يكسبون مع TrustChain Capital',create_account:'إنشاء حساب مجاني →',settings_title:'الإعدادات',settings_sub:'إدارة تفضيلات حسابك والأمان',change_password:'تغيير كلمة المرور',security_pin:'رمز الأمان',update_password:'تحديث كلمة المرور',update_pin:'تحديث الرمز',danger_zone:'منطقة الخطر',language:'اللغة',language_sub:'اختر لغتك المفضلة'},
+  zh:{features:'功能特点',plans:'投资计划',about:'关于我们',login:'登录',signup:'注册',logout:'退出',dashboard:'仪表板',portfolio:'投资组合',trading:'交易图表',deposit:'充值',withdraw:'提现',transactions:'交易记录',notifications:'通知',referral:'推荐',spin:'转盘抽奖',profile:'个人资料与KYC',settings:'设置',support:'支持',signout:'退出登录',main:'主菜单',funds:'资金',account:'账户',admin_panel:'管理面板',hero_title:'机构级<span class="accent">加密财富</span>管理',hero_sub:'TrustChain Capital提供安全、透明、高收益的数字资产投资工具。加入数千名每日获得稳定收益的投资者。',start_investing:'开始投资 →',client_portal:'客户门户',ready:'准备好增长您的财富了吗？',join_cta:'加入47,000+投资者，与TrustChain Capital一起获益',create_account:'免费创建账户 →',settings_title:'设置',settings_sub:'管理账户偏好和安全设置',change_password:'更改密码',security_pin:'安全PIN码',update_password:'更新密码',update_pin:'更新PIN码',danger_zone:'危险区域',language:'语言',language_sub:'选择您的首选语言'},
+  pt:{features:'Funcionalidades',plans:'Planos',about:'Sobre',login:'Entrar',signup:'Cadastrar',logout:'Sair',dashboard:'Painel',portfolio:'Portfólio',trading:'Gráficos',deposit:'Depósito',withdraw:'Saque',transactions:'Transações',notifications:'Notificações',referral:'Indicação',spin:'Girar & Ganhar',profile:'Perfil & KYC',settings:'Configurações',support:'Suporte',signout:'Sair',main:'Principal',funds:'Fundos',account:'Conta',admin_panel:'Painel Admin',hero_title:'Gestão <span class="accent">Cripto</span> Institucional de Patrimônio',hero_sub:'TrustChain Capital oferece veículos de investimento seguros, transparentes e de alto rendimento. Junte-se a milhares de investidores.',start_investing:'Começar a Investir →',client_portal:'Portal do Cliente',ready:'Pronto para fazer sua riqueza crescer?',join_cta:'Junte-se a 47.000+ investidores já ganhando com TrustChain Capital',create_account:'Criar Conta Grátis →',settings_title:'Configurações',settings_sub:'Gerencie as preferências e segurança da sua conta',change_password:'Alterar Senha',security_pin:'PIN de Segurança',update_password:'Atualizar Senha',update_pin:'Atualizar PIN',danger_zone:'Zona de Perigo',language:'Idioma',language_sub:'Escolha seu idioma preferido'},
+  ru:{features:'Функции',plans:'Планы',about:'О нас',login:'Войти',signup:'Регистрация',logout:'Выйти',dashboard:'Панель',portfolio:'Портфель',trading:'Графики',deposit:'Пополнение',withdraw:'Вывод',transactions:'Транзакции',notifications:'Уведомления',referral:'Реферальная',spin:'Крутить & Выиграть',profile:'Профиль & KYC',settings:'Настройки',support:'Поддержка',signout:'Выйти',main:'Главное',funds:'Средства',account:'Аккаунт',admin_panel:'Панель администратора',hero_title:'Институциональное управление <span class="accent">криптоактивами</span>',hero_sub:'TrustChain Capital предоставляет безопасные, прозрачные и высокодоходные инвестиционные инструменты.',start_investing:'Начать инвестировать →',client_portal:'Клиентский портал',ready:'Готовы приумножить своё состояние?',join_cta:'Присоединяйтесь к 47 000+ инвесторам, зарабатывающим с TrustChain Capital',create_account:'Создать бесплатный аккаунт →',settings_title:'Настройки',settings_sub:'Управление настройками и безопасностью аккаунта',change_password:'Изменить пароль',security_pin:'PIN безопасности',update_password:'Обновить пароль',update_pin:'Обновить PIN',danger_zone:'Опасная зона',language:'Язык',language_sub:'Выберите предпочитаемый язык'},
+  hi:{features:'विशेषताएं',plans:'योजनाएं',about:'हमारे बारे में',login:'लॉग इन',signup:'साइन अप',logout:'लॉग आउट',dashboard:'डैशबोर्ड',portfolio:'पोर्टफोलियो',trading:'ट्रेडिंग चार्ट',deposit:'जमा',withdraw:'निकासी',transactions:'लेनदेन',notifications:'सूचनाएं',referral:'रेफरल',spin:'स्पिन और जीतें',profile:'प्रोफाइल और KYC',settings:'सेटिंग्स',support:'सहायता',signout:'साइन आउट',main:'मुख्य',funds:'फंड',account:'खाता',admin_panel:'एडमिन पैनल',hero_title:'संस्थागत <span class="accent">क्रिप्टो वेल्थ</span> प्रबंधन',hero_sub:'TrustChain Capital सुरक्षित, पारदर्शी और उच्च-उपज निवेश वाहन प्रदान करता है। हजारों निवेशकों से जुड़ें।',start_investing:'निवेश शुरू करें →',client_portal:'ग्राहक पोर्टल',ready:'अपनी संपत्ति बढ़ाने के लिए तैयार हैं?',join_cta:'47,000+ निवेशकों में शामिल हों जो TrustChain Capital के साथ कमा रहे हैं',create_account:'मुफ्त खाता बनाएं →',settings_title:'सेटिंग्स',settings_sub:'अपनी खाता प्राथमिकताएं और सुरक्षा प्रबंधित करें',change_password:'पासवर्ड बदलें',security_pin:'सुरक्षा PIN',update_password:'पासवर्ड अपडेट करें',update_pin:'PIN अपडेट करें',danger_zone:'खतरा क्षेत्र',language:'भाषा',language_sub:'अपनी पसंदीदा भाषा चुनें'},
+  ja:{features:'機能',plans:'プラン',about:'会社概要',login:'ログイン',signup:'新規登録',logout:'ログアウト',dashboard:'ダッシュボード',portfolio:'ポートフォリオ',trading:'チャート',deposit:'入金',withdraw:'出金',transactions:'取引履歴',notifications:'通知',referral:'紹介プログラム',spin:'スピン&ウィン',profile:'プロフィール&KYC',settings:'設定',support:'サポート',signout:'ログアウト',main:'メイン',funds:'資金',account:'アカウント',admin_panel:'管理パネル',hero_title:'機関投資家向け<span class="accent">暗号資産</span>管理',hero_sub:'TrustChain Capitalは安全で透明性が高く、高収益のデジタル資産投資手段を提供します。',start_investing:'投資を始める →',client_portal:'クライアントポータル',ready:'資産を増やす準備ができましたか？',join_cta:'TrustChain Capitalで収益を上げる47,000人以上の投資家に加わりましょう',create_account:'無料アカウントを作成 →',settings_title:'設定',settings_sub:'アカウントの設定とセキュリティを管理する',change_password:'パスワード変更',security_pin:'セキュリティPIN',update_password:'パスワードを更新',update_pin:'PINを更新',danger_zone:'危険ゾーン',language:'言語',language_sub:'希望言語を選択してください'},
+  ko:{features:'특징',plans:'플랜',about:'소개',login:'로그인',signup:'가입',logout:'로그아웃',dashboard:'대시보드',portfolio:'포트폴리오',trading:'거래 차트',deposit:'입금',withdraw:'출금',transactions:'거래 내역',notifications:'알림',referral:'추천',spin:'스핀 & 당첨',profile:'프로필 & KYC',settings:'설정',support:'지원',signout:'로그아웃',main:'메인',funds:'자금',account:'계정',admin_panel:'관리자 패널',hero_title:'기관급 <span class="accent">암호화폐 자산</span> 관리',hero_sub:'TrustChain Capital은 안전하고 투명한 고수익 디지털 자산 투자 수단을 제공합니다.',start_investing:'투자 시작하기 →',client_portal:'클라이언트 포털',ready:'재산을 늘릴 준비가 되셨나요?',join_cta:'TrustChain Capital로 수익을 올리는 47,000명 이상의 투자자들과 합류하세요',create_account:'무료 계정 만들기 →',settings_title:'설정',settings_sub:'계정 기본 설정 및 보안 관리',change_password:'비밀번호 변경',security_pin:'보안 PIN',update_password:'비밀번호 업데이트',update_pin:'PIN 업데이트',danger_zone:'위험 구역',language:'언어',language_sub:'선호 언어를 선택하세요'},
+  it:{features:'Funzionalità',plans:'Piani',about:'Chi siamo',login:'Accedi',signup:'Registrati',logout:'Esci',dashboard:'Dashboard',portfolio:'Portfolio',trading:'Grafici',deposit:'Deposito',withdraw:'Prelievo',transactions:'Transazioni',notifications:'Notifiche',referral:'Referral',spin:'Gira e Vinci',profile:'Profilo & KYC',settings:'Impostazioni',support:'Supporto',signout:'Esci',main:'Principale',funds:'Fondi',account:'Account',admin_panel:'Pannello Admin',hero_title:'Gestione <span class="accent">Cripto</span> Patrimoniale Istituzionale',hero_sub:'TrustChain Capital offre strumenti di investimento sicuri, trasparenti e ad alto rendimento per gli asset digitali.',start_investing:'Inizia a investire →',client_portal:'Portale clienti',ready:'Pronto a far crescere il tuo patrimonio?',join_cta:'Unisciti a oltre 47.000 investitori che già guadagnano con TrustChain Capital',create_account:'Crea account gratuito →',settings_title:'Impostazioni',settings_sub:'Gestisci le preferenze e la sicurezza del tuo account',change_password:'Cambia password',security_pin:'PIN di sicurezza',update_password:'Aggiorna password',update_pin:'Aggiorna PIN',danger_zone:'Zona pericolosa',language:'Lingua',language_sub:'Scegli la tua lingua preferita'},
+  tr:{features:'Özellikler',plans:'Planlar',about:'Hakkımızda',login:'Giriş Yap',signup:'Kaydol',logout:'Çıkış',dashboard:'Panel',portfolio:'Portföy',trading:'Grafikler',deposit:'Para Yatır',withdraw:'Para Çek',transactions:'İşlemler',notifications:'Bildirimler',referral:'Referans',spin:'Çevir & Kazan',profile:'Profil & KYC',settings:'Ayarlar',support:'Destek',signout:'Çıkış Yap',main:'Ana Menü',funds:'Fonlar',account:'Hesap',admin_panel:'Yönetici Paneli',hero_title:'Kurumsal <span class="accent">Kripto Varlık</span> Yönetimi',hero_sub:'TrustChain Capital, dijital varlıklar için güvenli, şeffaf ve yüksek getirili yatırım araçları sunar.',start_investing:'Yatırıma Başla →',client_portal:'Müşteri Portalı',ready:'Servetinizi artırmaya hazır mısınız?',join_cta:'TrustChain Capital ile kazanan 47.000+ yatırımcıya katılın',create_account:'Ücretsiz Hesap Oluştur →',settings_title:'Ayarlar',settings_sub:'Hesap tercihlerinizi ve güvenliğinizi yönetin',change_password:'Şifre Değiştir',security_pin:'Güvenlik PIN',update_password:'Şifreyi Güncelle',update_pin:'PIN\'i Güncelle',danger_zone:'Tehlike Bölgesi',language:'Dil',language_sub:'Tercih ettiğiniz dili seçin'},
+  nl:{features:'Functies',plans:'Plannen',about:'Over ons',login:'Inloggen',signup:'Registreren',logout:'Uitloggen',dashboard:'Dashboard',portfolio:'Portefeuille',trading:'Grafieken',deposit:'Storting',withdraw:'Opname',transactions:'Transacties',notifications:'Meldingen',referral:'Verwijzing',spin:'Draaien & Winnen',profile:'Profiel & KYC',settings:'Instellingen',support:'Ondersteuning',signout:'Uitloggen',main:'Hoofd',funds:'Fondsen',account:'Account',admin_panel:'Beheerdersdeel',hero_title:'Institutioneel <span class="accent">Crypto Vermogen</span>sbeheer',hero_sub:'TrustChain Capital biedt veilige, transparante en hoog renderende beleggingsvehikels voor digitale activa.',start_investing:'Begin met investeren →',client_portal:'Klantportaal',ready:'Klaar om uw vermogen te laten groeien?',join_cta:'Sluit u aan bij 47.000+ investeerders die al verdienen met TrustChain Capital',create_account:'Gratis account aanmaken →',settings_title:'Instellingen',settings_sub:'Beheer uw accountvoorkeuren en beveiliging',change_password:'Wachtwoord wijzigen',security_pin:'Beveiligings-PIN',update_password:'Wachtwoord bijwerken',update_pin:'PIN bijwerken',danger_zone:'Gevaarzone',language:'Taal',language_sub:'Kies uw voorkeurstaal'},
+  pl:{features:'Funkcje',plans:'Plany',about:'O nas',login:'Zaloguj się',signup:'Zarejestruj się',logout:'Wyloguj',dashboard:'Panel',portfolio:'Portfel',trading:'Wykresy',deposit:'Wpłata',withdraw:'Wypłata',transactions:'Transakcje',notifications:'Powiadomienia',referral:'Polecenie',spin:'Kręć & Wygraj',profile:'Profil & KYC',settings:'Ustawienia',support:'Wsparcie',signout:'Wyloguj',main:'Główne',funds:'Fundusze',account:'Konto',admin_panel:'Panel administratora',hero_title:'Instytucjonalne zarządzanie <span class="accent">kryptowalutami</span>',hero_sub:'TrustChain Capital oferuje bezpieczne, transparentne i wysokodochodowe instrumenty inwestycyjne. Dołącz do tysięcy inwestorów.',start_investing:'Zacznij inwestować →',client_portal:'Portal klienta',ready:'Gotowy na pomnożenie swojego majątku?',join_cta:'Dołącz do ponad 47 000 inwestorów zarabiających z TrustChain Capital',create_account:'Utwórz bezpłatne konto →',settings_title:'Ustawienia',settings_sub:'Zarządzaj preferencjami i bezpieczeństwem konta',change_password:'Zmień hasło',security_pin:'PIN bezpieczeństwa',update_password:'Aktualizuj hasło',update_pin:'Aktualizuj PIN',danger_zone:'Strefa niebezpieczna',language:'Język',language_sub:'Wybierz preferowany język'},
+  sv:{features:'Funktioner',plans:'Planer',about:'Om oss',login:'Logga in',signup:'Registrera dig',logout:'Logga ut',dashboard:'Instrumentpanel',portfolio:'Portfölj',trading:'Diagram',deposit:'Insättning',withdraw:'Uttag',transactions:'Transaktioner',notifications:'Aviseringar',referral:'Referens',spin:'Snurra & Vinn',profile:'Profil & KYC',settings:'Inställningar',support:'Support',signout:'Logga ut',main:'Huvud',funds:'Fonder',account:'Konto',admin_panel:'Adminpanel',hero_title:'Institutionell <span class="accent">kryptoförmögenhets</span>förvaltning',hero_sub:'TrustChain Capital erbjuder säkra, transparenta och högavkastande investeringsfordon för digitala tillgångar.',start_investing:'Börja investera →',client_portal:'Kundportal',ready:'Redo att växa din förmögenhet?',join_cta:'Gå med 47 000+ investerare som redan tjänar med TrustChain Capital',create_account:'Skapa gratis konto →',settings_title:'Inställningar',settings_sub:'Hantera dina kontoinställningar och säkerhet',change_password:'Ändra lösenord',security_pin:'Säkerhets-PIN',update_password:'Uppdatera lösenord',update_pin:'Uppdatera PIN',danger_zone:'Farlig zon',language:'Språk',language_sub:'Välj ditt föredragna språk'},
+};
+
+// Fallback all other languages to English
+Object.keys(LANG_NAMES).forEach(l=>{if(!T[l])T[l]={...T.en};});
+
+let currentLang='en';
+let langDropdownOpen=false;
+
+function getLangPref(){return localStorage.getItem('tc_lang')||'en';}
+function saveLangPref(l){localStorage.setItem('tc_lang',l);}
+
+function initLang(){
+  currentLang=getLangPref();
+  if(currentUser&&currentUser.lang&&T[currentUser.lang])currentLang=currentUser.lang;
+  applyTranslations();
+  updateLangBtn();
+}
+
+function setLanguage(lang){
+  if(!T[lang])return;
+  currentLang=lang;
+  saveLangPref(lang);
+  if(currentUser){
+    const data=getData();const u=data.users.find(x=>x.id===currentUser.id);
+    if(u){u.lang=lang;saveData(data);currentUser=u;setSession(u);}
+  }
+  applyTranslations();
+  updateLangBtn();
+  closeLangDropdown();
+  renderSettingsLang();
+  showToast((LANG_FLAGS[lang]||'🌐')+' '+(LANG_NAMES[lang]||lang)+' activated','success');
+}
+
+function updateLangBtn(){
+  const flag=document.getElementById('lang-flag-display');
+  const name=document.getElementById('lang-name-display');
+  if(flag)flag.textContent=LANG_FLAGS[currentLang]||'🌐';
+  if(name)name.textContent=currentLang.toUpperCase();
+}
+
+function applyTranslations(){
+  const t=T[currentLang]||T.en;
+  const rtl=['ar','fa','he','ur'].includes(currentLang);
+  document.documentElement.setAttribute('dir',rtl?'rtl':'ltr');
+  document.documentElement.setAttribute('lang',currentLang);
+
+  // Nav public links
+  document.querySelectorAll('.nav-links a').forEach(a=>{
+    const oc=a.getAttribute('onclick')||'';
+    if(oc.includes('features'))a.textContent=t.features;
+    else if(oc.includes('plans'))a.textContent=t.plans;
+    else if(oc.includes('about'))a.textContent=t.about;
+  });
+  // Nav auth buttons
+  document.querySelectorAll('#nav-auth .btn').forEach(b=>{
+    const oc=b.getAttribute('onclick')||'';
+    if(oc.includes('login'))b.textContent=t.login;
+    else if(oc.includes('register'))b.textContent=t.signup;
+  });
+  // Nav user logout
+  const logoutBtn=document.querySelector('#nav-user .btn');
+  if(logoutBtn){const svg=logoutBtn.querySelector('svg');logoutBtn.childNodes.forEach(n=>{if(n.nodeType===3&&n.textContent.trim())n.textContent=' '+t.logout;});if(svg)logoutBtn.prepend(svg);}
+
+  // Hero
+  const heroTitle=document.querySelector('.hero-title');
+  if(heroTitle)heroTitle.innerHTML=t.hero_title;
+  const heroSub=document.querySelector('.hero-sub');
+  if(heroSub)heroSub.textContent=t.hero_sub;
+  const heroBtns=document.querySelectorAll('.hero-actions .btn');
+  if(heroBtns[0])heroBtns[0].textContent=t.start_investing;
+  if(heroBtns[1])heroBtns[1].textContent=t.client_portal;
+
+  // CTA section near bottom of landing
+  document.querySelectorAll('.page h2').forEach(h=>{
+    if(h.textContent.includes('Ready to grow')||h.textContent.includes('grow your wealth')||h.innerHTML.includes('ready')){}
+  });
+  const ctaSections=document.querySelectorAll('section');
+  ctaSections.forEach(sec=>{
+    const h2=sec.querySelector('h2');
+    if(!h2)return;
+    const txt=h2.textContent;
+    if(txt.includes('Ready to grow')||txt.includes('Bereit')||txt.includes('Prêt')||txt.includes('Listo')||t.ready&&txt.includes(T.en.ready.replace('?',''))){
+      h2.textContent=t.ready;
+      const p=h2.nextElementSibling;if(p&&p.tagName==='P')p.textContent=t.join_cta;
+      const btn=sec.querySelector('.btn-gold');if(btn)btn.textContent=t.create_account;
+    }
+  });
+
+  // Sidebar labels
+  const sidebarLabels=document.querySelectorAll('.sidebar-label');
+  const labelKeys=['main','funds','account'];
+  sidebarLabels.forEach((el,i)=>{
+    if(el.style.color&&el.style.color.includes('gold'))el.textContent=t.admin_panel;
+    else if(labelKeys[i])el.textContent=t[labelKeys[i]];
+  });
+
+  // Sidebar links text (find text nodes, preserve SVG + badge)
+  const sidebarSectionMap={dashboard:'dashboard',portfolio:'portfolio',trading:'trading',deposit:'deposit',withdraw:'withdraw',transactions:'transactions',notifications:'notifications',referral:'referral',spin:'spin',profile:'profile',settings:'settings',support:'support'};
+  Object.entries(sidebarSectionMap).forEach(([section,key])=>{
+    const link=document.querySelector('.sidebar-link[data-section="'+section+'"]');
+    if(!link||!t[key])return;
+    link.childNodes.forEach(n=>{if(n.nodeType===3&&n.textContent.trim())n.textContent=t[key];});
+  });
+  // Sidebar sign out
+  const signoutLink=document.querySelector('.sidebar-bottom .sidebar-link');
+  if(signoutLink)signoutLink.childNodes.forEach(n=>{if(n.nodeType===3&&n.textContent.trim())n.textContent=t.signout;});
+
+  // Settings section
+  const ss=document.getElementById('section-settings');
+  if(ss){
+    const ptitle=ss.querySelector('.page-title');if(ptitle)ptitle.textContent=t.settings_title;
+    const psub=ss.querySelector('.page-subtitle');if(psub)psub.textContent=t.settings_sub;
+    ss.querySelectorAll('.card').forEach(card=>{
+      const h3=card.querySelector('h3');if(!h3)return;
+      const ht=h3.textContent;
+      if(ht.includes('Change Password')||ht.includes('Passwort')||ht.includes('mot de passe'))h3.textContent=t.change_password;
+      else if(ht.includes('Security PIN')||ht.includes('PIN'))h3.textContent=t.security_pin;
+    });
+    const chPwdBtn=ss.querySelector('[onclick="changePassword()"]');if(chPwdBtn)chPwdBtn.textContent=t.update_password;
+    const chPinBtn=ss.querySelector('[onclick="changePin()"]');if(chPinBtn)chPinBtn.textContent=t.update_pin;
+    const dangerCard=ss.querySelector('[style*="--red"]>h3');if(dangerCard)dangerCard.textContent=t.danger_zone;
+  }
+  // Settings lang card
+  const slt=document.getElementById('settings-lang-title');if(slt)slt.textContent='🌐 '+t.language;
+  const sls=document.getElementById('settings-lang-sub');if(sls)sls.textContent=t.language_sub;
+
+  renderSettingsLang();
+}
+
+// ---- Dropdown ----
+function toggleLangDropdown(e){
+  e.stopPropagation();
+  langDropdownOpen=!langDropdownOpen;
+  const dd=document.getElementById('lang-dropdown');
+  const btn=document.getElementById('lang-picker-btn');
+  if(langDropdownOpen){
+    renderLangOptions('');
+    const rect=btn.getBoundingClientRect();
+    dd.style.display='block';
+    dd.style.top=(rect.bottom+6)+'px';
+    // position left-aligned on small screens, right-aligned on larger
+    if(window.innerWidth<480){dd.style.left='8px';dd.style.right='8px';dd.style.minWidth='unset';}
+    else{dd.style.right=(window.innerWidth-rect.right)+'px';dd.style.left='auto';}
+    const inp=document.getElementById('lang-search-input');
+    if(inp){inp.value='';setTimeout(()=>inp.focus(),50);}
+  } else {
+    dd.style.display='none';
+  }
+}
+
+function closeLangDropdown(){
+  langDropdownOpen=false;
+  const dd=document.getElementById('lang-dropdown');
+  if(dd)dd.style.display='none';
+}
+
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#lang-dropdown')&&!e.target.closest('#lang-picker-btn'))closeLangDropdown();
+});
+
+function renderLangOptions(filter){
+  const list=document.getElementById('lang-options-list');if(!list)return;
+  const f=(filter||'').toLowerCase();
+  const langs=Object.keys(LANG_NAMES).filter(l=>!f||LANG_NAMES[l].toLowerCase().includes(f)||l.includes(f));
+  list.innerHTML=langs.map(l=>`<div class="lang-option${l===currentLang?' active-lang':''}" onclick="setLanguage('${l}')"><span style="font-size:20px">${LANG_FLAGS[l]||'🌐'}</span><span>${LANG_NAMES[l]}</span>${l===currentLang?'<span style="margin-left:auto;font-size:12px;color:var(--gold)">✓</span>':''}</div>`).join('');
+}
+
+function filterLangs(val){renderLangOptions(val);}
+
+function renderSettingsLang(){
+  const grid=document.getElementById('settings-lang-grid');if(!grid)return;
+  grid.innerHTML=Object.keys(LANG_NAMES).map(l=>`<div onclick="setLanguage('${l}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;background:${l===currentLang?'rgba(245,158,11,.15)':'var(--bg3)'};border:1px solid ${l===currentLang?'var(--gold)':'var(--border)'};transition:all .2s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="if('${l}'!==currentLang)this.style.borderColor='var(--border)'"><span style="font-size:16px">${LANG_FLAGS[l]||'🌐'}</span><span style="color:${l===currentLang?'var(--gold)':'var(--text)'}">${LANG_NAMES[l]}</span>${l===currentLang?'<span style="margin-left:auto;font-size:11px;color:var(--gold)">✓</span>':''}</div>`).join('');
+}
 </script>
 
 <!-- Smartsupp Live Chat script -->
