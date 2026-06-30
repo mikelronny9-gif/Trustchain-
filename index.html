@@ -537,12 +537,6 @@ canvas{display:block;max-width:100%}
         <button class="btn btn-gold btn-block btn-lg mt-2" onclick="doLogin()" id="login-btn">Sign In</button>
         <div class="sep"></div>
         <p class="text-center text-sm text-muted">Don't have an account? <a class="text-gold" onclick="navigate('register')" style="cursor:pointer">Sign up free</a></p>
-        <button class="btn btn-outline btn-block mt-2" onclick="openImportSync()" style="border-color:var(--blue);color:var(--blue)">📱 Import Account with Sync Code</button>
-        <div style="margin-top:16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px;font-size:12px;color:var(--muted)">
-          <div class="text-gold font-bold mb-1">Demo Credentials</div>
-          <div>User: demo@trustchain.com / Demo@123</div>
-          <div>Admin: yomawisdom55@gmail.com / mamaboy12</div>
-        </div>
       </div>
     </div>
   </div>
@@ -2670,6 +2664,227 @@ function importSyncCode(){
   showToast('Welcome back, '+u.name.split(' ')[0]+'! Account imported ✓','success');
   navigate('dashboard');
 }
+</script>
+
+<!-- Firebase Auth + Firestore + Analytics -->
+<script type="module">
+  import { initializeApp }                          from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+  import { getAnalytics }                           from "https://www.gstatic.com/firebasejs/12.15.0/firebase-analytics.js";
+  import { getAuth, signInWithEmailAndPassword,
+           createUserWithEmailAndPassword, signOut,
+           onAuthStateChanged }                     from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+  import { getFirestore, doc, setDoc,
+           getDoc, updateDoc }                      from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDLXVspO8iOc1w_avAnr7ok4GHjzPcizsc",
+    authDomain: "trustchain-ca993.firebaseapp.com",
+    projectId: "trustchain-ca993",
+    storageBucket: "trustchain-ca993.firebasestorage.app",
+    messagingSenderId: "124567546443",
+    appId: "1:124567546443:web:873e0a0f165899f1a5fbce",
+    measurementId: "G-71LNS88CFR"
+  };
+
+  const app      = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const fbAuth   = getAuth(app);
+  const db       = getFirestore(app);
+
+  // ── helpers ──────────────────────────────────────────────────────
+  async function loadAndSetUser(uid, email) {
+    const snap = await getDoc(doc(db, 'users', uid));
+    let userData;
+
+    if (snap.exists()) {
+      userData = snap.data();
+    } else {
+      // First time on this device — pull from local store / seed
+      const data = getData();
+      const local = data.users.find(u => u.email === email);
+      if (!local) {
+        showToast('Profile not found. Contact support.', 'error');
+        await signOut(fbAuth);
+        return;
+      }
+      userData = { ...local, uid };
+      await setDoc(doc(db, 'users', uid), userData);
+    }
+
+    if (userData.status === 'suspended') {
+      showToast('Account suspended. Contact support.', 'error');
+      await signOut(fbAuth); return;
+    }
+    if (userData.status === 'banned') {
+      showToast('Account banned. Contact support.', 'error');
+      await signOut(fbAuth); return;
+    }
+
+    // Merge into local store so the rest of the app works normally
+    const data = getData();
+    const idx  = data.users.findIndex(u => u.email === email);
+    if (idx >= 0) data.users[idx] = { ...data.users[idx], ...userData };
+    else          data.users.push(userData);
+    saveData(data);
+
+    currentUser = userData;
+    setSession(userData);
+    updateNavUI();
+    return userData;
+  }
+
+  // Expose so admin save-data paths can also sync to Firestore
+  window.syncUserToFirestore = async function(userData) {
+    if (!userData || !userData.uid) return;
+    try { await updateDoc(doc(db, 'users', userData.uid), userData); } catch(e) {
+      try { await setDoc(doc(db, 'users', userData.uid), userData); } catch(_) {}
+    }
+  };
+
+  // ── override doLogin ─────────────────────────────────────────────
+  window.doLogin = async function() {
+    const email = (document.getElementById('login-email').value || '').trim().toLowerCase();
+    const pwd   = document.getElementById('login-password').value;
+    if (!email || !pwd) { showToast('Enter email and password', 'error'); return; }
+
+    const btn = document.getElementById('login-btn');
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Signing in…';
+
+    try {
+      const cred = await signInWithEmailAndPassword(fbAuth, email, pwd);
+      const u    = await loadAndSetUser(cred.user.uid, email);
+      if (u) {
+        showToast('Welcome back, ' + u.name.split(' ')[0] + '!', 'success');
+        navigate('dashboard');
+      }
+    } catch(e) {
+      // Firebase couldn't authenticate — fall back to local data (admins seeded in localStorage)
+      if (['auth/user-not-found','auth/wrong-password',
+           'auth/invalid-credential','auth/invalid-email'].includes(e.code)) {
+        const data = getData();
+        const user = data.users.find(u => u.email === email && u.password === pwd);
+        if (!user)                          showToast('Invalid email or password', 'error');
+        else if (user.status==='suspended') showToast('Account suspended. Contact support.', 'error');
+        else if (user.status==='banned')    showToast('Account banned. Contact support.', 'error');
+        else {
+          currentUser = user; setSession(user); updateNavUI();
+          showToast('Welcome back, ' + user.name.split(' ')[0] + '!', 'success');
+          navigate('dashboard');
+        }
+      } else {
+        showToast('Sign-in failed. Please try again.', 'error');
+      }
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
+
+  // ── override doRegister ──────────────────────────────────────────
+  window.doRegister = async function() {
+    const first   = (document.getElementById('reg-first').value   || '').trim();
+    const last    = (document.getElementById('reg-last').value    || '').trim();
+    const email   = (document.getElementById('reg-email').value   || '').trim().toLowerCase();
+    const phone   = (document.getElementById('reg-phone').value   || '').trim();
+    const country = document.getElementById('reg-country').value;
+    const lang    = document.getElementById('reg-lang')?.value || 'en';
+    const pwd     = document.getElementById('reg-password').value;
+    const confirm = document.getElementById('reg-confirm').value;
+    const terms   = document.getElementById('terms').checked;
+    const refCode = (document.getElementById('reg-ref').value || '').trim();
+
+    if (!first||!last||!email||!country||!pwd) { showToast('Please fill all required fields','error'); return; }
+    if (!terms)            { showToast('Please accept the Terms of Service','error'); return; }
+    if (pwd.length < 8)    { showToast('Password must be at least 8 characters','error'); return; }
+    if (pwd !== confirm)   { showToast('Passwords do not match','error'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('Enter a valid email address','error'); return; }
+
+    const btn  = document.querySelector('#page-register .btn-gold.btn-block.btn-lg');
+    const orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
+
+    try {
+      const cred    = await createUserWithEmailAndPassword(fbAuth, email, pwd);
+      const newUser = {
+        id: cred.user.uid, uid: cred.user.uid,
+        email, name: first + ' ' + last, phone, country, lang, role: 'user',
+        balance: 0, totalProfit: 0, totalDeposit: 0, totalWithdrawal: 0,
+        status: 'active', kycStatus: 'none', spinsLeft: 3, pin: '1234',
+        referralCode: 'TC-' + first.toUpperCase().slice(0,4) + Math.floor(100+Math.random()*900),
+        referredBy: refCode, createdAt: new Date().toISOString().slice(0,10)
+      };
+
+      await setDoc(doc(db, 'users', cred.user.uid), newUser);
+
+      const data = getData();
+      data.users.push(newUser);
+      data.notifications.push({
+        id: 'n'+Date.now(), title: 'Welcome to TrustChain Capital!',
+        message: 'Your account is ready. Make your first deposit to start earning.',
+        type: 'success', read: false, createdAt: newUser.createdAt
+      });
+      if (refCode) {
+        const ref = data.users.find(u => u.referralCode === refCode);
+        if (ref) data.notifications.push({
+          id: 'n'+(Date.now()+1), title: 'New Referral Joined',
+          message: first+' '+last+' joined using your referral code!',
+          type: 'success', read: false, createdAt: newUser.createdAt
+        });
+      }
+      saveData(data);
+
+      currentUser = newUser; setSession(newUser); updateNavUI();
+      showToast('Account created! Welcome, '+first+'!', 'success');
+      navigate('dashboard');
+    } catch(e) {
+      if (e.code === 'auth/email-already-in-use') showToast('Email already registered', 'error');
+      else if (e.code === 'auth/weak-password')   showToast('Password must be at least 6 characters', 'error');
+      else showToast('Registration failed. Please try again.', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
+    }
+  };
+
+  // ── override doLogout ────────────────────────────────────────────
+  window.doLogout = async function() {
+    if (typeof profitInterval !== 'undefined' && profitInterval) clearInterval(profitInterval);
+    try { await signOut(fbAuth); } catch(_) {}
+    currentUser = null;
+    clearSession();
+    updateNavUI();
+    if (typeof closeLangDropdown === 'function') closeLangDropdown();
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-landing').classList.add('active');
+    savePageState('landing','');
+    window.scrollTo(0,0);
+    showToast('Signed out successfully','info');
+  };
+
+  // ── cross-device session restore via Firebase ────────────────────
+  let fbSessionHandled = false;
+  onAuthStateChanged(fbAuth, async (firebaseUser) => {
+    if (fbSessionHandled) return;
+    fbSessionHandled = true;
+
+    if (firebaseUser && !currentUser) {
+      // Firebase has an active session but the page init found no local session
+      // (i.e. new device / cleared localStorage)
+      try {
+        const u = await loadAndSetUser(firebaseUser.uid, firebaseUser.email);
+        if (u) {
+          initLang();
+          const {page, section} = getPageState();
+          if (page === 'app' && section) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-app').classList.add('active');
+            showSection(section);
+          } else {
+            navigate('dashboard');
+          }
+        }
+      } catch(_) {}
+    }
+  });
 </script>
 
 <!-- Smartsupp Live Chat script -->
